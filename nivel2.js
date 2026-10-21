@@ -22,8 +22,16 @@
   ];
   const $ = id => document.getElementById(id);
   const dirs = { ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0] };
-  let player, enemy, items, points, running = false, ended = false, startedAt, lastMove = 0, lastEnemy = 0, animation;
-  let preferred = null, collected = 0;
+  let player, enemy, items, points, running = false, paused = false, ended = false, startedAt, lastMove = 0, lastEnemy = 0, animation;
+  let preferred = null, collected = 0, retroAudio = null;
+  // Secuencia chiptune generativa: se inicia solo tras pulsar Comenzar.
+  function startRetroAudio() {
+    if(retroAudio) return;
+    const ctxAudio = new AudioContext(), master = ctxAudio.createGain(); master.gain.value = .055; master.connect(ctxAudio.destination);
+    const melody=[523,659,784,659,587,698,880,698,523,587,698,784], bass=[131,147,175,147]; let step=0;
+    const note=(freq,when,duration,type,gain)=>{const o=ctxAudio.createOscillator(),g=ctxAudio.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(.0001,when);g.gain.exponentialRampToValueAtTime(gain,when+.015);g.gain.exponentialRampToValueAtTime(.0001,when+duration);o.connect(g).connect(master);o.start(when);o.stop(when+duration+.02)};
+    const play=()=>{const t=ctxAudio.currentTime;note(melody[step%melody.length],t,.18,'square',.07);note(bass[Math.floor(step/2)%bass.length],t,.35,'triangle',.06);if(step%2===0)note(100,t,.045,'square',.025);step++;retroAudio.timer=setTimeout(play,230)};retroAudio={ctx:ctxAudio};play();
+  }
 
   function reset() {
     items = new Map(); points = 0; collected = 0; ended = false; preferred = null;
@@ -83,10 +91,11 @@
   }
   function lose(){ end('lose'); } function win(){ end('win'); }
   function start() {
-    $('result').classList.add('hidden'); $('intro').classList.add('hidden'); reset(); running = true; startedAt = performance.now(); lastMove = startedAt; lastEnemy = startedAt; animation = requestAnimationFrame(loop);
+    startRetroAudio(); $('result').classList.add('hidden'); $('intro').classList.add('hidden'); $('pause').classList.add('hidden'); reset(); running = true; paused = false; startedAt = performance.now(); lastMove = startedAt; lastEnemy = startedAt; animation = requestAnimationFrame(loop);
   }
   function loop(now) {
     if(!running) return;
+    if(paused){ draw(now); animation=requestAnimationFrame(loop); return; }
     if(now-lastMove >= STEP_MS) { movePlayer(); lastMove = now; }
     if(now-lastEnemy >= ENEMY_MS) { moveEnemy(); lastEnemy = now; }
     const remaining = Math.max(0, 80 - Math.floor((now-startedAt)/1000));
@@ -122,6 +131,9 @@
   function drawBot(x,y,dir,t) {
     const cx=x*TILE+20,cy=y*TILE+20+Math.sin(t/180)*1;ctx.save();ctx.translate(cx,cy);ctx.fillStyle='#ed5960';ctx.fillRect(-14,-11,28,23);ctx.fillStyle='#a91e3a';ctx.fillRect(-16,8,32,6);ctx.fillStyle='#b7f0e8';ctx.fillRect(-10,-6,20,9);ctx.fillStyle='#071c25';ctx.fillRect(-7,-3,4,3);ctx.fillRect(3,-3,4,3);ctx.strokeStyle='#f1eff0';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-9,-15);ctx.lineTo(-3,-20);ctx.lineTo(3,-15);ctx.lineTo(9,-20);ctx.stroke();ctx.restore();
   }
-  addEventListener('keydown', e => { const key=e.key.length===1?e.key.toLowerCase():e.key; if(dirs[key]) { preferred=dirs[key]; e.preventDefault(); }});
+  addEventListener('keydown', e => { const key=e.key.length===1?e.key.toLowerCase():e.key; if(key==='Escape'&&running){paused=!paused;$('pause').classList.toggle('hidden',!paused);return} if(dirs[key]&&!paused) { preferred=dirs[key]; e.preventDefault(); }});
+  $('resumeBtn').onclick=()=>{paused=false;$('pause').classList.add('hidden')};
+  $('restartBtn').onclick=()=>location.reload();
+  $('menuBtn').onclick=()=>location.href='index.html';
   $('startBtn').onclick=start; reset();
 })();
